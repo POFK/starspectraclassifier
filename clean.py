@@ -16,6 +16,7 @@ wavenew = np.linspace(w_start, w_end, w_len / 1)
 dt = np.dtype([('index', 'i4'), ('label', 'i4'),
                ('flux_norm', np.float32, w_len)])
 
+
 def mask(func):
     def wrap(*args, **kwargs):
         spec = func(*args, **kwargs)
@@ -149,7 +150,7 @@ class DATA(object):
                     'label': name_type[key],
                     'wave': spec.wave,
                     'flux': spec.flux,
-                #   'err': spec.err
+                    #   'err': spec.err
                 }
                 data[key] = sub
         #       print name, data[name]['index'], data[name]['label'], data[name]['sptype']
@@ -189,19 +190,31 @@ class DATA(object):
             data_arr_len = len(data[key])
             data_arr = np.empty(data_arr_len, dtype=dt)
             for name in data[key].iterkeys():
-                flux_ip = self.interpolate_flux(
-                    data[key][name]['wave'], data[key][name]['flux'], wavenew)
-                flux_s = np.convolve(flux_ip, kernel, mode='same') / w_conv
-#               data[key][name]['flux'] = flux_ip.astype(np.float32)
-#               data[key][name]['flux_s'] = flux_s.astype(np.float32)
-#               data[key][name]['flux_norm'] = (flux_ip / flux_s).astype(np.float32)
                 index = data[key][name]['index']
-                data_arr[index]['flux_norm'] = (flux_ip / flux_s).astype(np.float32)
+                try:
+                    flux_ip = self.interpolate_flux(data[key][name]['wave'],
+                                                    data[key][name]['flux'],
+                                                    wavenew)
+                except ValueError, err:
+                    print 'mask:', key, name, index, data[key][name][
+                        'wave'].min(), data[key][name]['wave'].max()
+                    data_arr[index]['label'] = -1
+                    continue
+                flux_s = np.convolve(flux_ip, kernel, mode='same') / w_conv
+                #               data[key][name]['flux'] = flux_ip.astype(np.float32)
+                #               data[key][name]['flux_s'] = flux_s.astype(np.float32)
+                #               data[key][name]['flux_norm'] = (flux_ip / flux_s).astype(np.float32)
+                data_arr[index]['flux_norm'] = (flux_ip / flux_s).astype(
+                    np.float32)
                 data_arr[index]['index'] = index
                 data_arr[index]['label'] = name_type[key]
+            bool_mask = data_arr['label'] != -1
+            data_arr = data_arr[bool_mask]
+            print 'mask %d elements from %d %s spectra...' % (
+                data_arr_len - bool_mask.sum(), data_arr_len, key)
             dataset[key] = data_arr
         return dataset
-        
+
     def get_musigma(self, dataset):
         """TODO: Docstring for get_musigma.
 
@@ -227,7 +240,7 @@ class DATA(object):
         shape = len(subset)
         assert num > shape
         num = num - shape
-        randomindex = np.random.randint(0,shape,num)
+        randomindex = np.random.randint(0, shape, num)
         data = subset[randomindex]
         data = np.hstack([subset, data])
         return data
@@ -240,49 +253,49 @@ class DATA(object):
         :returns: TODO
 
         """
-        DIR = os.path.join(OutDir,'dataset')
+        DIR = os.path.join(OutDir, 'dataset')
         np.save(os.path.join(DIR, path), subdataset)
-       
+
     def __call__(self, fmt='train', sigma=200):
         """TODO: Docstring for __call__
         :returns: TODO
 
         """
-        print '='*80
+        print '=' * 80
         print fmt
-        print '='*80
+        print '=' * 80
         fndict = self.getfilename()
         fndict = self.seltrainset(fndict)
         num_max = []
-        for key in name_type.keys():
-            num_max.append(fndict[key]['len_train'])
-        num_max = np.max(num_max)
         data = self.loaddata(fndict, fmt=fmt)
         data_set = self.smooth(wavenew, data, sigma=sigma)
+
         for key in name_type.keys():
-            if not self.Test:
-                assert len(data_set) == fndict[key]['len_%s'%fmt]
+            num_max.append(data_set[key].shape[0])
+        num_max = np.max(num_max)
+        for key in name_type.keys():
             if fmt == 'train':
                 self.get_musigma(data_set)
-                np.save(os.path.join(OutDir,'wavelen.npy'),wavenew)
-                np.save(os.path.join(OutDir,'Norm_mu.npy'),self.mu)
-                np.save(os.path.join(OutDir,'Norm_std.npy'),self.sigma)
-                print fmt, key, num_max, len(data_set[key]), fndict[key]['len_train']
-                if fndict[key]['len_train']<num_max:
+                np.save(os.path.join(OutDir, 'wavelen.npy'), wavenew)
+                np.save(os.path.join(OutDir, 'Norm_mu.npy'), self.mu)
+                np.save(os.path.join(OutDir, 'Norm_std.npy'), self.sigma)
+                print fmt, key, num_max, len(
+                    data_set[key]), fndict[key]['len_train']
+                if data_set[key].shape[0] < num_max:
                     if self.Test:
                         subdataset = self.oversampling(data_set[key], 20)
                     else:
                         subdataset = self.oversampling(data_set[key], num_max)
-                    self.save(fmt+'_'+key,subdataset)
+                    self.save(fmt + '_' + key, subdataset)
                 else:
-                    self.save(fmt+'_'+key,data_set[key])
+                    self.save(fmt + '_' + key, data_set[key])
             else:
-                self.save(fmt+'_'+key,data_set[key])
-                
+                self.save(fmt + '_' + key, data_set[key])
+
 
 if __name__ == '__main__':
     da = DATA()
-#   da.Test = True
+    #   da.Test = True
     da(fmt='train', sigma=200)
     da(fmt='valid', sigma=200)
     da(fmt='test', sigma=200)
