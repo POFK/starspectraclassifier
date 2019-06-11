@@ -168,6 +168,50 @@ class DATA(object):
         f_linear = interpolate.interp1d(wavelen, flux)
         return f_linear(wavenew)
 
+    def smooth4test(self, wavenew, data, sigma=200):
+        """This function is used to interpolate and smooth the flux spectrum. 
+        Unlike the "smooth" function used to create the training set, it is simplified for easier usage.
+
+        :sigma: 20nm
+        :wavenew: TODO
+        :data: TODO
+        :returns: TODO
+
+        """
+        step = wavenew[1] - wavenew[0]
+        ones = np.ones_like(wavenew, dtype=np.float64)
+        dis = np.arange(int(sigma / step) * 3 + 1, dtype=np.float64)
+        dis -= dis[-1] / 2.
+        dis *= step
+        kernel = np.exp(-0.5 * (dis / sigma)**2.)
+        w_conv = np.convolve(ones, kernel, mode='same')
+
+        data_arr_len = len(data)
+        data_arr = np.empty(data_arr_len, dtype=dt)
+
+        for i in range(len(data)):
+            spec = data[i]
+            try:
+                flux_ip = self.interpolate_flux(spec['wave'],
+                                                spec['flux'],
+                                                wavenew)
+            except ValueError, err:
+                print 'mask:', i, spec['wave'].min(), spec['wave'].max()
+                data_arr[i]['label'] = -1
+                continue
+            flux_s = np.convolve(flux_ip, kernel, mode='same') / w_conv
+
+            data_arr[i]['flux_norm'] = (flux_ip / flux_s).astype(
+                np.float32)
+            data_arr[i]['label'] = 0
+            data_arr[i]['index'] = i
+        bool_mask = data_arr['label'] != -1
+        data_arr = data_arr[bool_mask]
+        print 'mask %d elements from %d spectra...' % (
+            data_arr_len - bool_mask.sum(), data_arr_len)
+        return data_arr
+
+
     def smooth(self, wavenew, data, sigma=200):
         """TODO: Docstring for smooth.
 

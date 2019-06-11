@@ -1,0 +1,6 @@
+numpy
+scipy
+tqdm
+astropy
+tensorflow>=1.5, <1.8
+matplotlib
